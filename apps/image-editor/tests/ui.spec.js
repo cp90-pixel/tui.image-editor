@@ -1,5 +1,4 @@
 import UI from '@/ui';
-import { HELP_MENUS } from '@/consts';
 
 describe('UI', () => {
   let ui, options;
@@ -29,7 +28,7 @@ describe('UI', () => {
     });
 
     it('should execute "removeEventListener" for all menus', () => {
-      const allUiButtonElementName = [...options.menu, ...HELP_MENUS];
+      const allUiButtonElementName = [...options.menu, ...ui._helpMenuNames];
       allUiButtonElementName.forEach((element) => {
         jest.spyOn(ui._buttonElements[element], 'removeEventListener');
       });
@@ -39,6 +38,28 @@ describe('UI', () => {
       allUiButtonElementName.forEach((element) => {
         expect(ui._buttonElements[element].removeEventListener).toHaveBeenCalled();
       });
+    });
+  });
+
+  describe('help menu configuration', () => {
+    it('normalizes custom help menu groups and disables history UI when omitted', () => {
+      const customOptions = {
+        ...options,
+        helpMenus: [
+          ['zoomOut', 'zoomIn'],
+          '|',
+          ['undo', 'redo'],
+          'divider',
+          ['delete'],
+        ],
+      };
+      const customUi = new UI(document.createElement('div'), customOptions, {});
+
+      expect(customUi._helpMenuNames).toEqual(['zoomOut', 'zoomIn', 'undo', 'redo', 'delete']);
+      expect(customUi._buttonElements.history).toBeUndefined();
+      expect(customUi._historyMenu).toBeNull();
+
+      customUi.destroy();
     });
   });
 

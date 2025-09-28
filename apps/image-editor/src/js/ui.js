@@ -2,13 +2,7 @@ import CustomEvents from 'tui-code-snippet/customEvents/customEvents';
 import extend from 'tui-code-snippet/object/extend';
 import forEach from 'tui-code-snippet/collection/forEach';
 import { getSelector, assignmentForDestroy, cls, getHistoryTitle, isSilentCommand } from '@/util';
-import {
-  ZOOM_HELP_MENUS,
-  COMMAND_HELP_MENUS,
-  DELETE_HELP_MENUS,
-  eventNames,
-  HELP_MENUS,
-} from '@/consts';
+import { ZOOM_HELP_MENUS, COMMAND_HELP_MENUS, DELETE_HELP_MENUS, eventNames } from '@/consts';
 import mainContainer from '@/ui/template/mainContainer';
 import controls from '@/ui/template/controls';
 
@@ -49,6 +43,85 @@ const ZOOM_BUTTON_TYPE = {
   HAND: 'hand',
 };
 
+const HELP_MENU_SEPARATOR = '';
+
+const DEFAULT_HELP_MENU_GROUPS = [ZOOM_HELP_MENUS, COMMAND_HELP_MENUS, DELETE_HELP_MENUS];
+
+function flattenHelpMenuGroups(groups) {
+  const flattened = [];
+
+  forEach(groups, (group, index) => {
+    forEach(group, (name) => {
+      flattened.push(name);
+    });
+
+    if (index < groups.length - 1 && flattened.length) {
+      flattened.push(HELP_MENU_SEPARATOR);
+    }
+  });
+
+  return flattened;
+}
+
+const DEFAULT_HELP_MENU_ITEMS = flattenHelpMenuGroups(DEFAULT_HELP_MENU_GROUPS);
+
+function normalizeHelpMenus(helpMenusOption) {
+  if (!helpMenusOption) {
+    return DEFAULT_HELP_MENU_ITEMS.slice();
+  }
+
+  const normalized = [];
+  const pushSeparator = () => {
+    if (normalized.length && normalized[normalized.length - 1] !== HELP_MENU_SEPARATOR) {
+      normalized.push(HELP_MENU_SEPARATOR);
+    }
+  };
+
+  forEach(helpMenusOption, (item, index) => {
+    if (Array.isArray(item)) {
+      forEach(item, (name) => {
+        if (typeof name !== 'string') {
+          return;
+        }
+
+        const trimmedName = name.trim();
+
+        if (!trimmedName || trimmedName === '|' || trimmedName.toLowerCase() === 'divider') {
+          pushSeparator();
+        } else {
+          normalized.push(trimmedName);
+        }
+      });
+
+      if (index < helpMenusOption.length - 1 && normalized.length) {
+        pushSeparator();
+      }
+    } else if (typeof item === 'string') {
+      const trimmed = item.trim();
+
+      if (!trimmed || trimmed === '|' || trimmed.toLowerCase() === 'divider') {
+        pushSeparator();
+      } else {
+        normalized.push(trimmed);
+      }
+    }
+  });
+
+  while (normalized[0] === HELP_MENU_SEPARATOR) {
+    normalized.shift();
+  }
+
+  while (normalized[normalized.length - 1] === HELP_MENU_SEPARATOR) {
+    normalized.pop();
+  }
+
+  return normalized.length ? normalized : DEFAULT_HELP_MENU_ITEMS.slice();
+}
+
+function extractHelpMenuNames(helpMenuItems) {
+  return helpMenuItems.filter((name) => name !== HELP_MENU_SEPARATOR);
+}
+
 /**
  * Ui class
  * @class
@@ -62,11 +135,16 @@ const ZOOM_BUTTON_TYPE = {
  *   @param {Object} [options.uiSize] - ui size of editor
  *     @param {string} options.uiSize.width - width of ui
  *     @param {string} options.uiSize.height - height of ui
+ *   @param {(Array.<string|string[]>)} [options.helpMenus] - Toolbar and context menu configuration
+ *     for the help menu. Accepts an array of item names and separators ('|' or 'divider'), or an
+ *     array of grouped items.
  * @param {Object} actions - ui action instance
  */
 class Ui {
   constructor(element, options, actions) {
     this.options = this._initializeOption(options);
+    this._helpMenuItems = this.options.helpMenus;
+    this._helpMenuNames = extractHelpMenuNames(this._helpMenuItems);
     this._actions = actions;
     this.submenu = false;
     this.imageSize = {};
@@ -81,6 +159,7 @@ class Ui {
     this._editorElement = null;
     this._menuBarElement = null;
     this._subMenuElement = null;
+    this._historyMenu = null;
     this._makeUiElement(element);
     this._setUiSize();
     this._initMenuEvent = false;
@@ -187,14 +266,28 @@ class Ui {
    * @param {string} type - type of zoom button
    */
   toggleZoomButtonStatus(type) {
-    const targetClassList = this._buttonElements[type].classList;
+    const targetButton = this._buttonElements[type];
+
+    if (!targetButton) {
+      return;
+    }
+
+    const targetClassList = targetButton.classList;
 
     targetClassList.toggle(CLASS_NAME_ON);
 
     if (type === ZOOM_BUTTON_TYPE.ZOOM_IN) {
-      this._buttonElements[ZOOM_BUTTON_TYPE.HAND].classList.remove(CLASS_NAME_ON);
+      const handButton = this._buttonElements[ZOOM_BUTTON_TYPE.HAND];
+
+      if (handButton) {
+        handButton.classList.remove(CLASS_NAME_ON);
+      }
     } else {
-      this._buttonElements[ZOOM_BUTTON_TYPE.ZOOM_IN].classList.remove(CLASS_NAME_ON);
+      const zoomInButton = this._buttonElements[ZOOM_BUTTON_TYPE.ZOOM_IN];
+
+      if (zoomInButton) {
+        zoomInButton.classList.remove(CLASS_NAME_ON);
+      }
     }
   }
 
@@ -202,7 +295,13 @@ class Ui {
    * Turn off zoom-in button status
    */
   offZoomInButtonStatus() {
-    const zoomInClassList = this._buttonElements[ZOOM_BUTTON_TYPE.ZOOM_IN].classList;
+    const zoomInButton = this._buttonElements[ZOOM_BUTTON_TYPE.ZOOM_IN];
+
+    if (!zoomInButton) {
+      return;
+    }
+
+    const zoomInClassList = zoomInButton.classList;
 
     zoomInClassList.remove(CLASS_NAME_ON);
   }
@@ -212,7 +311,13 @@ class Ui {
    * @param {boolean} enabled - status to change
    */
   changeHandButtonStatus(enabled) {
-    const handClassList = this._buttonElements[ZOOM_BUTTON_TYPE.HAND].classList;
+    const handButton = this._buttonElements[ZOOM_BUTTON_TYPE.HAND];
+
+    if (!handButton) {
+      return;
+    }
+
+    const handClassList = handButton.classList;
 
     handClassList[enabled ? 'add' : 'remove'](CLASS_NAME_ON);
   }
@@ -224,7 +329,13 @@ class Ui {
    * @ignore
    */
   changeHelpButtonEnabled(buttonType, enableStatus) {
-    const buttonClassList = this._buttonElements[buttonType].classList;
+    const buttonElement = this._buttonElements[buttonType];
+
+    if (!buttonElement) {
+      return;
+    }
+
+    const buttonClassList = buttonElement.classList;
 
     buttonClassList[enableStatus ? 'add' : 'remove']('enabled');
   }
@@ -241,7 +352,7 @@ class Ui {
    * @private
    */
   _initializeOption(options) {
-    return extend(
+    const initialized = extend(
       {
         loadImage: {
           path: '',
@@ -267,9 +378,14 @@ class Ui {
           height: '100%',
         },
         menuBarPosition: 'bottom',
+        helpMenus: DEFAULT_HELP_MENU_ITEMS.slice(),
       },
       options
     );
+
+    initialized.helpMenus = normalizeHelpMenus(initialized.helpMenus);
+
+    return initialized;
   }
 
   /**
@@ -382,10 +498,12 @@ class Ui {
 
     this._addHelpMenus();
 
-    this._historyMenu = new History(this._buttonElements[HISTORY_MENU], {
-      locale: this._locale,
-      makeSvgIcon: this.theme.makeMenSvgIconSet.bind(this.theme),
-    });
+    if (this._buttonElements[HISTORY_MENU]) {
+      this._historyMenu = new History(this._buttonElements[HISTORY_MENU], {
+        locale: this._locale,
+        makeSvgIcon: this.theme.makeMenSvgIconSet.bind(this.theme),
+      });
+    }
 
     this._activateZoomMenus();
   }
@@ -406,7 +524,7 @@ class Ui {
    * @private
    */
   _makeHelpMenuWithPartition() {
-    return [...ZOOM_HELP_MENUS, '', ...COMMAND_HELP_MENUS, '', ...DELETE_HELP_MENUS];
+    return this._helpMenuItems;
   }
 
   /**
@@ -470,9 +588,16 @@ class Ui {
    * @private
    */
   _addHelpActionEvent() {
-    forEach(HELP_MENUS, (helpName) => {
-      this.eventHandler[helpName] = (event) => this._actions.main[helpName](event);
-      this._buttonElements[helpName].addEventListener('click', this.eventHandler[helpName]);
+    forEach(this._helpMenuNames, (helpName) => {
+      const action = this._actions.main && this._actions.main[helpName];
+      const buttonElement = this._buttonElements[helpName];
+
+      if (!buttonElement || typeof action !== 'function') {
+        return;
+      }
+
+      this.eventHandler[helpName] = (event) => action(event);
+      buttonElement.addEventListener('click', this.eventHandler[helpName]);
     });
   }
 
@@ -481,8 +606,14 @@ class Ui {
    * @private
    */
   _removeHelpActionEvent() {
-    forEach(HELP_MENUS, (helpName) => {
-      this._buttonElements[helpName].removeEventListener('click', this.eventHandler[helpName]);
+    forEach(this._helpMenuNames, (helpName) => {
+      const buttonElement = this._buttonElements[helpName];
+
+      if (!buttonElement) {
+        return;
+      }
+
+      buttonElement.removeEventListener('click', this.eventHandler[helpName]);
     });
   }
 
@@ -491,40 +622,50 @@ class Ui {
    * @param {Command|string} command - command or command name
    */
   _addHistory(command) {
-    if (!isSilentCommand(command)) {
-      const historyTitle =
-        typeof command === 'string' ? { name: command } : getHistoryTitle(command);
-
-      this._historyMenu.add(historyTitle);
+    if (!this._historyMenu || isSilentCommand(command)) {
+      return;
     }
+
+    const historyTitle =
+      typeof command === 'string' ? { name: command } : getHistoryTitle(command);
+
+    this._historyMenu.add(historyTitle);
   }
 
   /**
    * Init history
    */
   initHistory() {
-    this._historyMenu.init();
+    if (this._historyMenu) {
+      this._historyMenu.init();
+    }
   }
 
   /**
    * Clear history
    */
   clearHistory() {
-    this._historyMenu.clear();
+    if (this._historyMenu) {
+      this._historyMenu.clear();
+    }
   }
 
   /**
    * Select prev history
    */
   _selectPrevHistory() {
-    this._historyMenu.prev();
+    if (this._historyMenu) {
+      this._historyMenu.prev();
+    }
   }
 
   /**
    * Select next history
    */
   _selectNextHistory() {
-    this._historyMenu.next();
+    if (this._historyMenu) {
+      this._historyMenu.next();
+    }
   }
 
   /**
@@ -666,7 +807,9 @@ class Ui {
     this._addDownloadEvent();
     this._addMenuEvent();
     this._initMenu();
-    this._historyMenu.addEvent(this._actions.history);
+    if (this._historyMenu) {
+      this._historyMenu.addEvent(this._actions.history);
+    }
     this._initMenuEvent = true;
   }
 
@@ -679,7 +822,9 @@ class Ui {
     this._removeDownloadEvent();
     this._removeLoadEvent();
     this._removeMainMenuEvent();
-    this._historyMenu.removeEvent();
+    if (this._historyMenu) {
+      this._historyMenu.removeEvent();
+    }
   }
 
   /**
@@ -691,7 +836,9 @@ class Ui {
       this[menuName].destroy();
     });
 
-    this._historyMenu.destroy();
+    if (this._historyMenu) {
+      this._historyMenu.destroy();
+    }
   }
 
   /**

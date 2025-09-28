@@ -166,6 +166,27 @@ const instance = new ImageEditor(document.querySelector('#tui-image-editor'), {
 });
 ```
 
+### Customizing toolbar & context menus
+
+Use the `includeUI.helpMenus` option to enable, disable, or reorder the toolbar/context menu buttons
+that appear next to the main menu. The option accepts a flat array of item names (with optional
+`'|'`/`'divider'` separators) or an array of grouped items.
+
+```js
+const instance = new ImageEditor(document.querySelector('#tui-image-editor'), {
+  includeUI: {
+    ...,
+    helpMenus: [
+      ['zoomIn', 'zoomOut'],
+      '|',
+      ['undo', 'redo'],
+      'divider',
+      ['delete'],
+    ],
+  },
+});
+```
+
 <br>
 
 Full inscriptions list who can be replaced to custom ones:
