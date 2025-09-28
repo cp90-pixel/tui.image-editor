@@ -540,14 +540,54 @@ class Graphics {
    *   @param {Number} [options.height] Cropping height. Introduced in fabric v1.2.14
    * @returns {string} A DOMString containing the requested data URI.
    */
-  toDataURL(options) {
+  toDataURL(options = {}) {
     const cropper = this.getComponent(components.CROPPER);
     cropper.changeVisibility(false);
 
-    const dataUrl = this._canvas && this._canvas.toDataURL(options);
+    const exportOptions = this._getToDataURLOptions(options);
+    const dataUrl = this._canvas && this._canvas.toDataURL(exportOptions);
     cropper.changeVisibility(true);
 
     return dataUrl;
+  }
+
+  /**
+   * Get options for exporting the canvas as a data URL
+   * @param {Object} options - options for toDataURL
+   * @returns {Object} options for toDataURL with defaults applied
+   * @private
+   */
+  _getToDataURLOptions(options) {
+    if (options.format) {
+      return options;
+    }
+
+    const imageName = this.getImageName();
+
+    if (!imageName) {
+      return options;
+    }
+
+    const extension = imageName.split('.').pop();
+
+    if (!extension) {
+      return options;
+    }
+
+    let format;
+    const lowerExt = extension.toLowerCase();
+
+    if (lowerExt === 'jpg' || lowerExt === 'jpeg') {
+      format = 'jpeg';
+    } else if (lowerExt === 'png') {
+      format = 'png';
+    }
+
+    if (!format) {
+      return options;
+    }
+
+    return extend({ format }, options);
   }
 
   /**
